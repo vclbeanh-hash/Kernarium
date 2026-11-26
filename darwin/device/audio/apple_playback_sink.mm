@@ -267,20 +267,26 @@ struct Output final {
 [[nodiscard]] bool connectPlayer(AVAudioEngine* engine,
     AVAudioPlayerNode* player, AVAudioFormat* format, NSError** error)
 {
+#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000) || (!TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MAX_ALLOWED >= 270000)
     if (@available(iOS 27.0, *)) {
         return [engine connect:player
                             to:engine.mainMixerNode
                         format:format
                          error:error];
     }
+#endif
+    (void)error;
     [engine connect:player to:engine.mainMixerNode format:format];
     return true;
 }
 
 [[nodiscard]] bool startPlayer(AVAudioPlayerNode* player, NSError** error)
 {
+#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000) || (!TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MAX_ALLOWED >= 270000)
     if (@available(iOS 27.0, *))
         return [player playAndReturnError:error];
+#endif
+    (void)error;
     // `play` reports nothing, and it returns with the player stopped when its
     // engine stopped between the engine's start and this call, as a change of
     // the format or the route does. What counts is that the player plays.
@@ -409,6 +415,7 @@ public:
                       if (const auto flags = weakNotifications.lock())
                           flags->signal(flags->configurationChanged);
                     }];
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
         if (@available(iOS 27.0, *)) {
             /* iOS 27 replaces the interruption notification with two: the
              * session becoming inactive, which also reports the app's own
@@ -447,7 +454,9 @@ public:
                                   context.recommendation ==
                                   AVAudioSessionResumptionRecommendationShouldResume});
                         }];
-        } else {
+        } else
+#endif
+        {
             /* Before iOS 27 the system posts one notification, for an
              * interruption's beginning and its end. The sink resumes on every
              * end it reports, and takes the session back at once only on the
