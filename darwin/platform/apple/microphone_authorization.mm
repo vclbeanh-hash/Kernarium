@@ -4,6 +4,7 @@
 
 #import <AVFAudio/AVFAudio.h>
 #import <Foundation/Foundation.h>
+#import <TargetConditionals.h>
 
 #include <memory>
 #include <utility>
@@ -14,6 +15,7 @@ namespace {
 MicrophonePermission current() noexcept
 {
     @try {
+        if (@available(iOS 17.0, macOS 14.0, *)) {
         switch (AVAudioApplication.sharedInstance.recordPermission) {
         case AVAudioApplicationRecordPermissionGranted:
             return MicrophonePermission::granted;
@@ -22,6 +24,22 @@ MicrophonePermission current() noexcept
         default:
             return MicrophonePermission::denied;
         }
+        }
+#if TARGET_OS_IOS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        switch (AVAudioSession.sharedInstance.recordPermission) {
+        case AVAudioSessionRecordPermissionGranted:
+            return MicrophonePermission::granted;
+        case AVAudioSessionRecordPermissionUndetermined:
+            return MicrophonePermission::undetermined;
+        default:
+            return MicrophonePermission::denied;
+        }
+#pragma clang diagnostic pop
+#else
+        return MicrophonePermission::denied;
+#endif
     } @catch (NSException*) {
         return MicrophonePermission::denied;
     }
@@ -45,11 +63,25 @@ public:
         }
         const auto shared = std::make_shared<
             std::function<void(MicrophonePermission)>>(std::move(completion));
+        if (@available(iOS 17.0, macOS 14.0, *)) {
         [AVAudioApplication requestRecordPermissionWithCompletionHandler:^(
                                 BOOL granted) {
             (*shared)(granted ? MicrophonePermission::granted
                               : MicrophonePermission::denied);
         }];
+        } else {
+#if TARGET_OS_IOS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            [AVAudioSession.sharedInstance requestRecordPermission:^(BOOL granted) {
+                (*shared)(granted ? MicrophonePermission::granted
+                                  : MicrophonePermission::denied);
+            }];
+#pragma clang diagnostic pop
+#else
+            (*shared)(MicrophonePermission::denied);
+#endif
+        }
     }
 };
 
