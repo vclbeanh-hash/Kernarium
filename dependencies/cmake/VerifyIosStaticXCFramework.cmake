@@ -60,11 +60,13 @@ function(uml_verify_ios_static_xcframework)
             "${_xcframework}/${_slice}/${_arg_FRAMEWORK}.framework/${_arg_FRAMEWORK}")
         if(_slice STREQUAL "ios-arm64")
             set(_mach_platform 2)
+            set(_deployment_target 16.0)
         else()
             set(_mach_platform 7)
+            set(_deployment_target 26.0)
         endif()
         uml_verify_apple_binary(PATH "${_archive}"
-            PLATFORM ${_mach_platform} MINOS 26.0)
+            PLATFORM ${_mach_platform} MINOS ${_deployment_target})
 
         execute_process(
             COMMAND nm -g "${_archive}"
