@@ -236,6 +236,7 @@ jobs:
       - name: Install legacy application build tools
         run: |
           xcodebuild -version
+          command -v cmake >/dev/null && command -v ninja >/dev/null || brew install cmake ninja
           mkdir -p .build/legacy-app-logs .build/legacy-app-frameworks
       - name: Restore GPU prefix
         if: ${{ needs.gpu.result == 'success' }}
@@ -265,6 +266,38 @@ jobs:
           run-id: 45796539926
           name: lem-ios16-android-runtime
           path: .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework
+      - name: Cache iOS 16 TAR reader
+        id: archive_cache
+        uses: actions/cache@v4
+        with:
+          path: .build/legacy-libarchive
+          key: legacy-libarchive-3.8.5-ios16-v1-${{ runner.os }}-${{ runner.arch }}
+      - name: Build pinned TAR and gzip reader for iOS 16
+        if: steps.archive_cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .build/legacy-libarchive
+          curl -fL --retry 3 -o .build/libarchive.tar.gz https://github.com/libarchive/libarchive/releases/download/v3.8.5/libarchive-3.8.5.tar.gz
+          echo '8a60f3a7bfd59c54ce82ae805a93dba65defd04148c3333b7eaa2102f03b7ffd  .build/libarchive.tar.gz' | shasum -a 256 -c -
+          tar -xzf .build/libarchive.tar.gz -C .build
+          sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          cmake -S .build/libarchive-3.8.5 -B .build/libarchive-build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT="$sdk" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+            -DZLIB_LIBRARY="$sdk/usr/lib/libz.tbd" -DZLIB_INCLUDE_DIR="$sdk/usr/include" \
+            -DENABLE_ZLIB=ON -DENABLE_TEST=OFF -DENABLE_INSTALL=OFF \
+            -DENABLE_OPENSSL=OFF -DENABLE_LIBB2=OFF -DENABLE_LZ4=OFF \
+            -DENABLE_LZMA=OFF -DENABLE_ZSTD=OFF -DENABLE_BZip2=OFF \
+            -DENABLE_LIBXML2=OFF -DENABLE_EXPAT=OFF -DENABLE_PCREPOSIX=OFF \
+            -DENABLE_PCRE2POSIX=OFF -DENABLE_ICONV=OFF -DENABLE_ACL=OFF \
+            -DENABLE_XATTR=OFF -DENABLE_TAR=OFF -DENABLE_CPIO=OFF \
+            -DENABLE_CAT=OFF -DENABLE_UNZIP=OFF
+          cmake --build .build/libarchive-build --target archive_static --parallel 4
+          cp .build/libarchive-build/libarchive/libarchive.a .build/legacy-libarchive/
+          cp .build/libarchive-3.8.5/libarchive/archive.h .build/libarchive-3.8.5/libarchive/archive_entry.h .build/legacy-libarchive/
+          cp .build/libarchive-3.8.5/COPYING .build/legacy-libarchive/LICENSE-libarchive.txt
       - name: Compile minimal UIKit boot application for iOS 16
         shell: bash
         run: |
@@ -278,7 +311,9 @@ jobs:
             -std=c++23 -fobjc-arc -fblocks -O2 -Werror=unguarded-availability-new \
             -framework UIKit -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics -framework UniformTypeIdentifiers \
             -Wl,-rpath,@executable_path/Frameworks \
-            Andarium/LegacyBoot/main.mm GuestHost/Sources/KernariumRuntimeLoader.mm \
+            -I.build/legacy-libarchive \
+            Andarium/LegacyBoot/main.mm Andarium/LegacyBoot/ROMArchive.mm GuestHost/Sources/KernariumRuntimeLoader.mm \
+            .build/legacy-libarchive/libarchive.a -lz \
             -o "$app/Andarium" 2>&1 | tee .build/legacy-app-logs/app-build.log
           xcrun vtool -show-build "$app/Andarium"
       - name: Assemble experimental iOS 16 IPA
@@ -289,6 +324,7 @@ jobs:
           mkdir -p "$(dirname "$app")"
           cp -R .build/legacy-app/Build/Products/Release-iphoneos/Andarium.app "$app"
           mkdir -p "$app/Frameworks"
+          cp .build/legacy-libarchive/LICENSE-libarchive.txt "$app/"
           for name in MesaEGL MesaGallium; do
             cp -R ".build/legacy-app-gpu/Frameworks/$name.framework" "$app/Frameworks/"
           done
