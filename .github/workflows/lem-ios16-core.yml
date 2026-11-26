@@ -2,15 +2,22 @@
 name: LEM iOS 16 core compatibility
 on:
   workflow_dispatch:
+    inputs:
+      full_build:
+        description: Rebuild native Core, GPU and Runtime (otherwise reuse verified baseline)
+        type: boolean
+        default: false
   push:
     branches: [lem-ios16-legacy]
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: legacy-core-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   core:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_build }}
     runs-on: macos-26
     timeout-minutes: 75
     steps:
@@ -78,6 +85,7 @@ jobs:
           path: .build/legacy-logs/
           if-no-files-found: warn
   gpu:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_build }}
     runs-on: macos-26
     timeout-minutes: 120
     steps:
@@ -119,6 +127,7 @@ jobs:
           path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
           if-no-files-found: error
   runtime:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_build }}
     needs: [gpu, core]
     runs-on: macos-26
     timeout-minutes: 120
@@ -189,24 +198,58 @@ jobs:
           if-no-files-found: error
   app:
     needs: [gpu, runtime]
+    if: ${{ always() && !cancelled() && ((needs.gpu.result == 'success' && needs.runtime.result == 'success') || (needs.gpu.result == 'skipped' && needs.runtime.result == 'skipped')) }}
     runs-on: macos-26
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify reused native sources match the baseline
+        if: ${{ needs.runtime.result == 'skipped' }}
+        shell: bash
+        run: |
+          git diff --exit-code 36673a9dba53f82fe6a72fe46e31b14494b7f83e HEAD -- CMakeLists.txt CMakePresets.json cmake darwin kernel android dependencies Kernarium scripts
+          echo "Reusing verified native artifacts from run 45772323010"
       - name: Install legacy application build tools
         run: |
           brew install cmake ninja xcodegen
           mkdir -p .build/legacy-app-logs .build/legacy-app-frameworks
       - name: Restore GPU prefix
+        if: ${{ needs.runtime.result == 'success' }}
         uses: actions/download-artifact@v4
         with:
           name: lem-ios16-softpipe-prefix
           path: .build/legacy-app-gpu
+      - name: Restore GPU prefix from verified baseline
+        if: ${{ needs.runtime.result == 'skipped' }}
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45772323010
+          name: lem-ios16-softpipe-prefix
+          path: .build/legacy-app-gpu
       - name: Restore compiled Android runtime
+        if: ${{ needs.runtime.result == 'success' }}
         uses: actions/download-artifact@v4
         with:
           name: lem-ios16-android-runtime
           path: .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework
+      - name: Restore compiled Android runtime from verified baseline
+        if: ${{ needs.runtime.result == 'skipped' }}
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45772323010
+          name: lem-ios16-android-runtime
+          path: .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework
+      - name: Cache storage dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build/dependencies/ios-zstd
+            .build/dependencies/ios-storage
+          key: legacy-storage-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('dependencies/**') }}
       - name: Build and verify iOS 16 storage libraries
         shell: bash
         run: |
