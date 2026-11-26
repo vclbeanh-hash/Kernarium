@@ -10,7 +10,7 @@ import PackageDescription
 let package = Package(
     name: "GuestHostCore",
     defaultLocalization: "en",
-    platforms: [.macOS("27.0"), .iOS("26.0")],
+    platforms: [.macOS("27.0"), .iOS("16.0")],
     products: [
         .library(name: "GuestHostCore", targets: ["GuestHostCore"]),
     ],
