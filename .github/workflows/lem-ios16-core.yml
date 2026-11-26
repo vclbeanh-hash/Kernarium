@@ -254,7 +254,7 @@ jobs:
           xcrun --sdk iphoneos clang++ -arch arm64 -miphoneos-version-min=16.0 \
             -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -std=c++23 -fobjc-arc -fblocks -O2 -Werror=unguarded-availability-new \
-            -framework UIKit -framework Foundation -framework Metal -framework MetalKit \
+            -framework UIKit -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
             -Wl,-rpath,@executable_path/Frameworks \
             Andarium/LegacyBoot/main.mm GuestHost/Sources/KernariumRuntimeLoader.mm \
             -o "$app/Andarium" 2>&1 | tee .build/legacy-app-logs/app-build.log
