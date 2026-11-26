@@ -14,6 +14,7 @@ if(UML_APPLE_PLATFORM STREQUAL "macos")
 elseif(UML_APPLE_PLATFORM STREQUAL "ios")
     set(_uml_apple_gpu_default_prefix
         "${PROJECT_SOURCE_DIR}/.build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64")
+    set(_uml_apple_gpu_software TRUE)
 elseif(UML_APPLE_PLATFORM STREQUAL "ios-simulator")
     set(_uml_apple_gpu_default_prefix
         "${PROJECT_SOURCE_DIR}/.build/dependencies/apple-gpu-vulkan-experiment/ios-simulator-arm64")
