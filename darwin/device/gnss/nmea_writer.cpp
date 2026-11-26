@@ -7,6 +7,9 @@
 #include <charconv>
 #include <cmath>
 #include <cstddef>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <vector>
 
 namespace uml::gnss {
@@ -101,15 +104,12 @@ struct Utc final {
 {
     if (std::fabs(value) < 0.5 * std::pow(10.0, -precision))
         value = 0.0;
-    std::array<char, 48> buffer {};
-    const auto [end, error] = std::to_chars(
-        buffer.data(),
-        buffer.data() + buffer.size(),
-        value,
-        std::chars_format::fixed,
-        precision);
-    (void)error;
-    return std::string(buffer.data(), end);
+    // Floating-point to_chars is not available before iOS 16.3.
+    // Explicitly use the classic locale to preserve NMEA's decimal point.
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+    text << std::fixed << std::setprecision(precision) << value;
+    return text.str();
 }
 
 [[nodiscard]] std::string number(
