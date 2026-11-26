@@ -3,7 +3,7 @@
 """Configure scratch trees through the Apple toolchain at each deployment target.
 
 Every Apple platform builds at the one floor the toolchain names for it: macOS
-at 27.0, iOS and the iOS Simulator at 26.0. A tree whose CMake cache or command
+at 27.0, iOS devices at 16.0 and the iOS Simulator at 26.0. A tree whose CMake cache or command
 line holds another target, another platform's floor included, must fail to
 configure rather than build at it.
 """
@@ -19,8 +19,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-# The deployment floor of each platform. iOS and the iOS Simulator share one.
-FLOORS = {"macos": "27.0", "ios": "26.0", "ios-simulator": "26.0"}
+# The deployment floor of each platform in the experimental legacy port.
+FLOORS = {"macos": "27.0", "ios": "16.0", "ios-simulator": "26.0"}
 PLATFORMS = tuple(FLOORS)
 CACHE_ENTRY = re.compile(r"^CMAKE_OSX_DEPLOYMENT_TARGET:[A-Z]+=(.*)$", re.MULTILINE)
 
