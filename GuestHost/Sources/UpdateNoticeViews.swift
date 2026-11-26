@@ -19,7 +19,7 @@ private struct UpdateTile: View {
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: 30, height: 30)
-            .background(Color.accentColor.gradient, in: .rect(cornerRadius: 8, style: .continuous))
+            .background(Color.accentColor.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             // A row's words say it all.
             .accessibilityHidden(true)
     }
@@ -55,7 +55,7 @@ private struct UpdateLinkRow: View {
 /// With no sideloading app to hand the file to, two steps take their place.
 struct UpdateDetailList<Glyph: View>: View {
     @Environment(\.dismiss) private var dismiss
-    let notice: UpdateNotice
+    @ObservedObject var notice: UpdateNotice
     /// Andarium's mark, or Kernarium's icon.
     @ViewBuilder let glyph: () -> Glyph
 
@@ -71,7 +71,7 @@ struct UpdateDetailList<Glyph: View>: View {
             }
         }
         .onAppear { if notice.offer == nil { dismiss() } }
-        .onChange(of: notice.offer == nil) { _, withdrawn in
+        .onChange(of: notice.offer == nil) { withdrawn in
             if withdrawn { dismiss() }
         }
     }
@@ -150,7 +150,7 @@ struct UpdateDetailList<Glyph: View>: View {
 /// The detail in a sheet of its own, with Done.
 struct UpdateDetailSheet<Glyph: View>: View {
     @Environment(\.dismiss) private var dismiss
-    let notice: UpdateNotice
+    @ObservedObject var notice: UpdateNotice
     @ViewBuilder let glyph: () -> Glyph
 
     var body: some View {
@@ -162,7 +162,6 @@ struct UpdateDetailSheet<Glyph: View>: View {
                     }
                 }
         }
-        .presentationSizing(.form)
     }
 }
 
@@ -170,7 +169,7 @@ struct UpdateDetailSheet<Glyph: View>: View {
 /// there is one (which opens the detail), the Check for Updates switch, and
 /// under it what the check reads and sends.
 struct UpdateInfoSection<Glyph: View>: View {
-    let notice: UpdateNotice
+    @ObservedObject var notice: UpdateNotice
     @ViewBuilder let glyph: () -> Glyph
 
     var body: some View {
