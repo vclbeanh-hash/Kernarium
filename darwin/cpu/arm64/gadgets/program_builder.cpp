@@ -967,7 +967,7 @@ const void *recount(ProgramWords &words, const Candidate &led,
 BuildResult Builder::build(
 	std::uint64_t guest_address,
 	std::span<const std::uint32_t> instructions,
-	LinkResolver resolve_link, std::pmr::memory_resource *storage,
+	LinkResolver resolve_link, uml::compat::pmr::memory_resource *storage,
 	IndirectLinkResolver resolve_indirect_link, BuildOptions options) const
 {
 	const ::uml::cpu::HostCapabilitiesScope capabilities_scope{
