@@ -123,14 +123,16 @@ macos)
 	PREFIX_PLATFORM=macos-arm64
 	;;
 ios)
-	DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET
+	DEPLOYMENT_TARGET=16.0
 	SDK_NAME=iphoneos
 	TARGET=arm64-apple-ios$DEPLOYMENT_TARGET
 	EPOXY_SYSTEM=ios
 	SUBSYSTEM=ios
-	CONTRACT_NAME=ios-device-gpu-vulkan-arm64.tsv
+	CONTRACT_NAME=ios-device-gpu-software-arm64.tsv
 	MINIMUM_OS_KEY=MinimumOSVersion
 	PREFIX_PLATFORM=ios-device-arm64
+	SOFTWARE=1
+	MESA_SOFTWARE_DRIVERS=softpipe
 	;;
 ios-simulator)
 	DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET
@@ -206,7 +208,7 @@ fi
 "$ROOT_DIR/dependencies/prepare.sh" --product "$PRODUCT" \
 	--root "$SOURCE_ROOT" --verify
 LLVM_ARCHIVE=
-if [ "$SOFTWARE" -eq 1 ]; then
+if [ "$PLATFORM" = ios-simulator ]; then
 	"$ROOT_DIR/dependencies/prepare.sh" --archive-manifest \
 		"$LLVM_ARCHIVE_MANIFEST" --cache "$CACHE_ROOT" --verify
 	CACHE_ROOT=$(CDPATH= cd -- "$CACHE_ROOT" && pwd -P)
@@ -558,6 +560,9 @@ fi
 if [ "$SOFTWARE" -eq 0 ]; then
 	MESA_GL_DRIVER_ARGS="-Dgallium-drivers=zink -Dzink-vulkan-library-file=$STAGE/Frameworks/KosmicKrisp.framework/KosmicKrisp"
 	MESA_LLVM_ARGS="-Dllvm=disabled"
+elif [ "$PLATFORM" = ios ]; then
+	MESA_GL_DRIVER_ARGS="-Dgallium-drivers=softpipe"
+	MESA_LLVM_ARGS="-Dllvm=disabled -Ddraw-use-llvm=false"
 else
 	LLVM_PREFIX="$TEMP_ROOT/llvm"
 	"$ROOT_DIR/dependencies/build-apple-gpu-llvm.sh" \
@@ -757,7 +762,7 @@ BUILD_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 } > "$STAGE/share/uml-dependencies/build-receipt.tsv"
 cp "$PLATFORM_CONTRACT" \
 	"$STAGE/share/uml-dependencies/$CONTRACT_NAME"
-if [ "$SOFTWARE" -eq 1 ]; then
+if [ "$PLATFORM" = ios-simulator ]; then
 	# The JIT's source identity: the prefix carries no LLVM file, only code
 	# built from this archive.
 	cp "$LLVM_ARCHIVE_MANIFEST" \
