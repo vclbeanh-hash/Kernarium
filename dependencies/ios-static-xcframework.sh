@@ -161,7 +161,7 @@ build_slice()
 		-P "$ROOT_DIR/dependencies/cmake/ConfigureStaticFrameworkPlist.cmake"
 }
 
-build_slice ios iphoneos "arm64-apple-ios$DEPLOYMENT_TARGET"
+build_slice ios iphoneos "arm64-apple-ios16.0"
 build_slice ios-simulator iphonesimulator \
 	"arm64-apple-ios$DEPLOYMENT_TARGET-simulator"
 
