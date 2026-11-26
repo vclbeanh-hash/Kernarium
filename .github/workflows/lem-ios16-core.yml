@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       full_build:
-        description: Rebuild native Core and GPU too (otherwise rebuild Runtime with verified GPU)
+        description: Rebuild native Core, GPU and Runtime
+        type: boolean
+        default: false
+      runtime_build:
+        description: Rebuild Runtime with verified GPU (otherwise reuse Build 53)
         type: boolean
         default: false
   push:
@@ -127,7 +131,7 @@ jobs:
           path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
           if-no-files-found: error
   runtime:
-    if: ${{ always() && !cancelled() && ((needs.gpu.result == 'success' && needs.core.result == 'success') || (needs.gpu.result == 'skipped' && needs.core.result == 'skipped')) }}
+    if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.full_build || inputs.runtime_build) && ((needs.gpu.result == 'success' && needs.core.result == 'success') || (needs.gpu.result == 'skipped' && needs.core.result == 'skipped')) }}
     needs: [gpu, core]
     runs-on: macos-26
     timeout-minutes: 120
@@ -216,7 +220,7 @@ jobs:
           if-no-files-found: error
   app:
     needs: [gpu, runtime]
-    if: ${{ always() && !cancelled() && needs.runtime.result == 'success' && (needs.gpu.result == 'success' || needs.gpu.result == 'skipped') }}
+    if: ${{ always() && !cancelled() && ((needs.runtime.result == 'success' && (needs.gpu.result == 'success' || needs.gpu.result == 'skipped')) || (needs.runtime.result == 'skipped' && needs.gpu.result == 'skipped')) }}
     runs-on: macos-26
     timeout-minutes: 120
     steps:
@@ -227,8 +231,8 @@ jobs:
         if: ${{ needs.runtime.result == 'skipped' }}
         shell: bash
         run: |
-          git diff --exit-code 36673a9dba53f82fe6a72fe46e31b14494b7f83e HEAD -- CMakeLists.txt CMakePresets.json cmake darwin kernel android dependencies Kernarium scripts
-          echo "Reusing verified native artifacts from run 45772323010"
+          git diff --exit-code d72f5a12cbfcc834e0857698bcfda7f19004553c HEAD -- CMakeLists.txt CMakePresets.json cmake darwin kernel android dependencies Kernarium scripts
+          echo "Reusing verified Runtime from Build 53 and GPU from Build 36"
       - name: Install legacy application build tools
         run: |
           xcodebuild -version
@@ -258,7 +262,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 45772323010
+          run-id: 45781067606
           name: lem-ios16-android-runtime
           path: .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework
       - name: Compile minimal UIKit boot application for iOS 16
