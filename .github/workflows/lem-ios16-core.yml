@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       full_build:
-        description: Rebuild native Core, GPU and Runtime (otherwise reuse verified baseline)
+        description: Rebuild native Core and GPU too (otherwise rebuild Runtime with verified GPU)
         type: boolean
         default: false
   push:
@@ -127,12 +127,17 @@ jobs:
           path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
           if-no-files-found: error
   runtime:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_build }}
+    if: ${{ always() && !cancelled() && ((needs.gpu.result == 'success' && needs.core.result == 'success') || (needs.gpu.result == 'skipped' && needs.core.result == 'skipped')) }}
     needs: [gpu, core]
     runs-on: macos-26
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify reused GPU dependency sources
+        if: ${{ needs.gpu.result == 'skipped' }}
+        run: git diff --exit-code 36673a9dba53f82fe6a72fe46e31b14494b7f83e HEAD -- dependencies cmake/toolchains
       - name: Install runtime build tools
         run: |
           brew install cmake ninja meson pkgconf autoconf automake libtool
@@ -140,8 +145,17 @@ jobs:
           .build/gpu-tools-venv/bin/pip install meson mako packaging pyyaml
           mkdir -p .build/legacy-runtime-logs
       - name: Restore verified device GPU prefix
+        if: ${{ needs.gpu.result == 'success' }}
         uses: actions/download-artifact@v4
         with:
+          name: lem-ios16-softpipe-prefix
+          path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
+      - name: Restore verified GPU prefix from baseline
+        if: ${{ needs.gpu.result == 'skipped' }}
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45772323010
           name: lem-ios16-softpipe-prefix
           path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
       - name: Prepare and build iOS 16 network dependencies
@@ -183,6 +197,10 @@ jobs:
           test -n "$binary"
           xcrun vtool -show-build "$binary" | tee .build/legacy-runtime-logs/macho.log
           xcrun otool -L "$binary" | tee -a .build/legacy-runtime-logs/macho.log
+          xcrun nm -u "$binary" > .build/legacy-runtime-logs/undefined-symbols.log
+          if grep -E '__ZN(K)?St3__13pmr' .build/legacy-runtime-logs/undefined-symbols.log; then
+            echo "Unexpected dependency on iOS system PMR runtime"; exit 1
+          fi
       - name: Upload runtime diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -198,7 +216,7 @@ jobs:
           if-no-files-found: error
   app:
     needs: [gpu, runtime]
-    if: ${{ always() && !cancelled() && ((needs.gpu.result == 'success' && needs.runtime.result == 'success') || (needs.gpu.result == 'skipped' && needs.runtime.result == 'skipped')) }}
+    if: ${{ always() && !cancelled() && needs.runtime.result == 'success' && (needs.gpu.result == 'success' || needs.gpu.result == 'skipped') }}
     runs-on: macos-26
     timeout-minutes: 120
     steps:
@@ -216,13 +234,13 @@ jobs:
           xcodebuild -version
           mkdir -p .build/legacy-app-logs .build/legacy-app-frameworks
       - name: Restore GPU prefix
-        if: ${{ needs.runtime.result == 'success' }}
+        if: ${{ needs.gpu.result == 'success' }}
         uses: actions/download-artifact@v4
         with:
           name: lem-ios16-softpipe-prefix
           path: .build/legacy-app-gpu
       - name: Restore GPU prefix from verified baseline
-        if: ${{ needs.runtime.result == 'skipped' }}
+        if: ${{ needs.gpu.result == 'skipped' }}
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
