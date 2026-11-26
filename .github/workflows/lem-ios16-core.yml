@@ -213,7 +213,7 @@ jobs:
           echo "Reusing verified native artifacts from run 45772323010"
       - name: Install legacy application build tools
         run: |
-          brew install cmake ninja xcodegen
+          xcodebuild -version
           mkdir -p .build/legacy-app-logs .build/legacy-app-frameworks
       - name: Restore GPU prefix
         if: ${{ needs.runtime.result == 'success' }}
@@ -243,38 +243,22 @@ jobs:
           run-id: 45772323010
           name: lem-ios16-android-runtime
           path: .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework
-      - name: Cache storage dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build/dependencies/ios-zstd
-            .build/dependencies/ios-storage
-          key: legacy-storage-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('dependencies/**') }}
-      - name: Build and verify iOS 16 storage libraries
+      - name: Compile minimal UIKit boot application for iOS 16
         shell: bash
         run: |
           set -o pipefail
-          dependencies/prepare.sh --product ios-compression 2>&1 | tee .build/legacy-app-logs/zstd-prepare.log
-          dependencies/build-ios-zstd.sh --jobs 3 2>&1 | tee .build/legacy-app-logs/zstd-build.log
-          cp -R .build/dependencies/ios-zstd/LibZstd.xcframework .build/legacy-app-frameworks/
-          dependencies/prepare.sh --product ios-storage 2>&1 | tee .build/legacy-app-logs/storage-prepare.log
-          dependencies/build-ios-storage.sh --jobs 3 2>&1 | tee .build/legacy-app-logs/storage-build.log
-      - name: Generate legacy app project
-        shell: bash
-        run: |
-          cd Andarium
-          mv Andarium.xcodeproj Andarium.upstream.xcodeproj
-          xcodegen generate --spec legacy-project.yml --project "$PWD"
-      - name: Compile and link application for iOS 16
-        shell: bash
-        run: |
-          set -o pipefail
-          xcodebuild -project Andarium/Andarium.xcodeproj -scheme Andarium \
-            -destination 'generic/platform=iOS' -configuration Release \
-            -derivedDataPath "$PWD/.build/legacy-app" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            IPHONEOS_DEPLOYMENT_TARGET=16.0 build \
-            2>&1 | tee .build/legacy-app-logs/app-build.log
+          app=".build/legacy-app/Build/Products/Release-iphoneos/Andarium.app"
+          mkdir -p "$app"
+          cp Andarium/LegacyBoot/Info.plist "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" "$app/Info.plist"
+          xcrun --sdk iphoneos clang++ -arch arm64 -miphoneos-version-min=16.0 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -std=c++23 -fobjc-arc -fblocks -O2 -Werror=unguarded-availability-new \
+            -framework UIKit -framework Foundation -framework Metal -framework MetalKit \
+            -Wl,-rpath,@executable_path/Frameworks \
+            Andarium/LegacyBoot/main.mm GuestHost/Sources/KernariumRuntimeLoader.mm \
+            -o "$app/Andarium" 2>&1 | tee .build/legacy-app-logs/app-build.log
+          xcrun vtool -show-build "$app/Andarium"
       - name: Stage verified Android 17 system image
         shell: bash
         run: |
