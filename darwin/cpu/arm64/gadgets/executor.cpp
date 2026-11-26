@@ -38,7 +38,7 @@
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <memory_resource>
+#include "cpu/legacy_memory_resource.hpp"
 #include <mutex>
 #include <new>
 #include <optional>
@@ -633,7 +633,7 @@ class Space final {
 public:
 	explicit Space(SpaceKey key, std::uint64_t changes)
 		: key_{std::move(key)}, gate_{changes}, reset_done_{changes},
-		  bodies_{std::pmr::new_delete_resource()}, account_{shed, this}
+		  bodies_{uml::compat::pmr::new_delete_resource()}, account_{shed, this}
 	{
 		bodies_.meter(&account_);
 		for (auto &shard : shards_) {
@@ -2056,7 +2056,7 @@ public:
 	 * costs no allocation until it is stored. Only one build is ever in
 	 * flight on an executor.
 	 */
-	[[nodiscard]] std::pmr::memory_resource *program_storage() noexcept
+	[[nodiscard]] uml::compat::pmr::memory_resource *program_storage() noexcept
 	{
 		build_scratch_.release();
 		return &build_scratch_;
@@ -2881,7 +2881,7 @@ private:
 	 * stream that doubles its way to 272 words consumes 510 words of
 	 * scratch on the way. */
 	std::array<std::byte, 32U << 10> scratch_;
-	std::pmr::monotonic_buffer_resource build_scratch_;
+	uml::compat::pmr::monotonic_buffer_resource build_scratch_;
 	/* At most uml_gadget_resident_generations + 1 entries, so finding one is
 	 * cheap; the state each holds is what makes retiring it proportional.
 	 * The running one stays valid across insertion; only retiring this very
@@ -3211,7 +3211,7 @@ namespace {
 	const arm64::gadgets::BuildOptions &options)
 {
 	return arm64::gadgets::Builder{}.build(pc, window, {},
-		std::pmr::get_default_resource(), {}, options);
+		uml::compat::pmr::get_default_resource(), {}, options);
 }
 
 /* A store whose link sweep released records may have released one the return
@@ -3474,7 +3474,7 @@ constexpr std::uint8_t aot_short_again = 64;
 		options.svcr = 0;
 		auto built = arm64::gadgets::Builder{}.build(
 			cpu.pc, std::span{&instruction, 1}, {},
-			std::pmr::get_default_resource(), {}, options);
+			uml::compat::pmr::get_default_resource(), {}, options);
 		if (!built.complete || built.program.instruction_count() != 1)
 			return run_trap_enabled_instruction(cpu, memory, executed);
 		slot.built = std::make_unique<arm64::gadgets::BuildResult>(
@@ -3942,7 +3942,7 @@ private:
 	const auto output = arm64::gadgets::a32::build(
 		{.key = key, .code = bytes.first(count * unit),
 		 .it = arm64::aarch32::ItState{cpu.a32_itstate}, .single = true},
-		{}, std::pmr::get_default_resource(), {}, build_options_,
+		{}, uml::compat::pmr::get_default_resource(), {}, build_options_,
 		a32::decode_profile(build_options_),
 		block_instruction_count);
 	if (output.units == 0) {
@@ -4074,7 +4074,7 @@ private:
 	options.svcr = static_cast<std::uint8_t>(cpu.svcr & arm64::svcr_mask);
 	auto built = arm64::gadgets::Builder{}.build(
 		cpu.pc, std::span{&instruction, 1}, {},
-		std::pmr::get_default_resource(), {}, options);
+		uml::compat::pmr::get_default_resource(), {}, options);
 	if (!built.complete || built.program.instruction_count() != 1) {
 		cpu.pc = built.stop_address;
 		return ::uml::cpu::EngineEvent::illegal_instruction;
