@@ -1434,7 +1434,7 @@ BuildOutput Translator::run()
 
 BuildOutput build(const BuildInput &input,
 		  const Builder::LinkResolver &resolve_link,
-		  std::pmr::memory_resource *storage,
+		  uml::compat::pmr::memory_resource *storage,
 		  const Builder::IndirectLinkResolver &resolve_indirect_link,
 		  const BuildOptions &, const Profile &profile,
 		  std::size_t block_instructions)
