@@ -1155,7 +1155,13 @@ private:
     {
         const auto& settings = plan_.settings;
         NSMutableDictionary* specification = [NSMutableDictionary dictionary];
-        specification[(__bridge NSString*)kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder] = @YES;
+        if (@available(iOS 17.4, macOS 10.9, *)) {
+            specification[(__bridge NSString*)kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder] = @YES;
+        } else {
+            // Keep the hardware-only contract on legacy hosts.
+            diagnostic_ = "hardware-only VideoToolbox encoder unavailable on this OS";
+            return VideoEncodeStatus::unsupported;
+        }
         if (plan_.lowLatency) specification[(__bridge NSString*)kVTVideoEncoderSpecification_EnableLowLatencyRateControl] = @YES;
         NSDictionary* source = @{
             (__bridge NSString*)kCVPixelBufferPixelFormatTypeKey: @(plan_.pixelFormat),
@@ -1327,8 +1333,10 @@ private:
             if (!apply(session, UML_KEY(AverageBitRate), @(s.bitrate), true)) return refuse("AverageBitRate");
             if (s.peakBitrate && !apply(session, UML_KEY(DataRateLimits), @[@(s.peakBitrate / 8), @1.0], !plan_.lowLatency))
                 return refuse("DataRateLimits");
-            if (s.bufferBits && s.bitrate)
-                (void)apply(session, UML_KEY(VBVBufferDuration), @(double(s.bufferBits) / double(s.bitrate)), false);
+            if (@available(iOS 26.0, macOS 27.0, *)) {
+                if (s.bufferBits && s.bitrate)
+                    (void)apply(session, UML_KEY(VBVBufferDuration), @(double(s.bufferBits) / double(s.bitrate)), false);
+            }
             break;
         case VideoRateControl::constantBitrate:
             if (!apply(session, UML_KEY(ConstantBitRate), @(s.bitrate), true)) return refuse("ConstantBitRate");
