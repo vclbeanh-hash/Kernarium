@@ -18,7 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <memory_resource>
+#include "cpu/legacy_memory_resource.hpp"
 #include <mutex>
 #include <span>
 #include <unordered_map>
@@ -567,8 +567,8 @@ private:
 	 * charged to the account as they grow and shrink. The arenas are not
 	 * safe to share, so every use of them is behind arena_mutex_. */
 	mutable std::mutex arena_mutex_;
-	gadget_cache::BodyArena streams_{std::pmr::new_delete_resource()};
-	gadget_cache::BodyArena sources_{std::pmr::new_delete_resource()};
+	gadget_cache::BodyArena streams_{uml::compat::pmr::new_delete_resource()};
+	gadget_cache::BodyArena sources_{uml::compat::pmr::new_delete_resource()};
 	gadget_cache::AttachedExecutors attached_;
 	/* What decides a shared space is renewed, and that it was. */
 	gadget_cache::RenewalLedger ledger_;
