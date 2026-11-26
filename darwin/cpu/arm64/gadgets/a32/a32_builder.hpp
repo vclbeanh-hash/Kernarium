@@ -6,7 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory_resource>
+#include "cpu/legacy_memory_resource.hpp"
 #include <optional>
 #include <span>
 
@@ -62,7 +62,7 @@ inline constexpr std::size_t block_limit = 64;
  * inside the block always completes there. */
 [[nodiscard]] BuildOutput build(const BuildInput &input,
 	const Builder::LinkResolver &resolve_link,
-	std::pmr::memory_resource *storage,
+	uml::compat::pmr::memory_resource *storage,
 	const Builder::IndirectLinkResolver &resolve_indirect_link,
 	const BuildOptions &options, const aarch32::Profile &profile,
 	std::size_t block_instructions);
