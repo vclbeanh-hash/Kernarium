@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <cstdio>
 #import "../../GuestHost/Sources/KernariumRuntimeLoader.h"
+extern NSString *LegacyExtractROM(NSURL *source, NSURL *stage);
 
 @interface LegacyMetalView : MTKView
 @property(nonatomic) BOOL guestRunning;
@@ -164,10 +165,15 @@
 }
 - (void)romMenu {
     if (self.running || self.importing) return;
-    UIAlertController *menu = [UIAlertController alertControllerWithTitle:@"Kho ROM" message:[self hasROM] ? @"ROM đã lưu trong máy. Không cần nhập lại khi cập nhật IPA." : @"Tải ROM chính thức, giải nén .tar.gz bằng Filza hoặc trên máy tính, rồi chọn thư mục chứa release-manifest.json. Chỉ cần nhập một lần." preferredStyle:UIAlertControllerStyleAlert];
-    [menu addAction:[UIAlertAction actionWithTitle:@"Tải ROM chính thức" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-        NSURL *url = [NSURL URLWithString:@"https://github.com/imxieyi/Kernarium/releases/download/andarium-1.1/lineage24-mainline6.18-4k-20261121-los24-r29.tar.gz"];
-        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
+    UIAlertController *menu = [UIAlertController alertControllerWithTitle:@"Kho ROM" message:[self hasROM] ? @"ROM đã lưu trong máy. Không cần nhập lại khi cập nhật IPA." : @"Chọn file .tar.gz đã tải, hoặc tải trực tiếp để app tự giải nén và kiểm tra. Chỉ cần nhập một lần." preferredStyle:UIAlertControllerStyleAlert];
+    if (![self hasROM]) [menu addAction:[UIAlertAction actionWithTitle:@"Tải và giải nén tự động" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        [self downloadROM];
+    }]];
+    if (![self hasROM]) [menu addAction:[UIAlertAction actionWithTitle:@"Nhập file .tar.gz đã tải" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeData] asCopy:NO];
+        picker.delegate = self;
+        picker.allowsMultipleSelection = NO;
+        [self presentViewController:picker animated:YES completion:nil];
     }]];
     if (![self hasROM]) [menu addAction:[UIAlertAction actionWithTitle:@"Nhập thư mục đã giải nén" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeFolder] asCopy:NO];
@@ -179,7 +185,38 @@
     [self presentViewController:menu animated:YES completion:nil];
 }
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    NSURL *source = urls.firstObject;
+    [self importROM:urls.firstObject removeSource:NO];
+}
+- (void)downloadROM {
+    if (self.running || self.importing || [self hasROM]) return;
+    self.importing = YES;
+    self.startButton.enabled = NO;
+    self.romButton.enabled = NO;
+    self.status.text = @"Đang tải ROM chính thức...";
+    [self appendLog:@"\nĐang tải ROM, giữ ứng dụng mở.\n"];
+    NSURL *url = [NSURL URLWithString:@"https://github.com/imxieyi/Kernarium/releases/download/andarium-1.1/lineage24-mainline6.18-4k-20261121-los24-r29.tar.gz"];
+    NSURLSessionDownloadTask *task = [NSURLSession.sharedSession downloadTaskWithURL:url completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+        NSError *moveError = nil;
+        NSURL *saved = nil;
+        NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? [(NSHTTPURLResponse *)response statusCode] : 0;
+        if (!error && location && status == 200) {
+            NSURL *target = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"ROM-%@.tar.gz",NSUUID.UUID.UUIDString]]];
+            if ([NSFileManager.defaultManager moveItemAtURL:location toURL:target error:&moveError]) saved = target;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.importing = NO;
+            self.startButton.enabled = YES;
+            self.romButton.enabled = YES;
+            if (saved) [self importROM:saved removeSource:YES];
+            else {
+                self.status.text = @"Tải ROM thất bại";
+                [self appendLog:[NSString stringWithFormat:@"\n%@ (HTTP %ld)\n",error.localizedDescription ?: moveError.localizedDescription ?: @"Không nhận được ROM",(long)status]];
+            }
+        });
+    }];
+    [task resume];
+}
+- (void)importROM:(NSURL *)source removeSource:(BOOL)removeSource {
     if (!source || self.running || self.importing || [self hasROM]) return;
     self.importing = YES;
     self.startButton.enabled = NO;
@@ -196,17 +233,45 @@
         NSString *problem = nil;
         if (![fm createDirectoryAtURL:stage withIntermediateDirectories:YES attributes:nil error:&error])
             problem = error.localizedDescription;
-        for (NSString *file in files) {
-            if (problem) break;
-            NSURL *from = [source URLByAppendingPathComponent:file];
-            NSURL *to = [stage URLByAppendingPathComponent:file];
-            NSNumber *regular = nil;
-            NSNumber *symlink = nil;
-            [from getResourceValue:&regular forKey:NSURLIsRegularFileKey error:nil];
-            [from getResourceValue:&symlink forKey:NSURLIsSymbolicLinkKey error:nil];
-            if (!regular.boolValue || symlink.boolValue) { problem = [@"Thiếu hoặc không hợp lệ: " stringByAppendingString:file]; break; }
-            if (![fm createDirectoryAtURL:to.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:&error] ||
-                ![fm copyItemAtURL:from toURL:to error:&error]) { problem = error.localizedDescription; break; }
+        if (!problem) {
+            __block NSString *readProblem = nil;
+            NSError *coordError = nil;
+            NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+            [coordinator coordinateReadingItemAtURL:source options:0 error:&coordError byAccessor:^(NSURL *readURL) {
+                NSNumber *directory = nil;
+                NSError *readError = nil;
+                if (![readURL getResourceValue:&directory forKey:NSURLIsDirectoryKey error:&readError]) {
+                    readProblem = [NSString stringWithFormat:@"Không truy cập được ROM: %@",readError.localizedDescription ?: @"unknown"];
+                    return;
+                }
+                if (!directory.boolValue) {
+                    readProblem = LegacyExtractROM(readURL,stage);
+                    return;
+                }
+                NSURL *base = readURL;
+                if (![fm fileExistsAtPath:[[base URLByAppendingPathComponent:@"release-manifest.json"] path]]) {
+                    NSURL *nested = [base URLByAppendingPathComponent:@"lineage24-mainline6.18-4k-20261121-los24-r29" isDirectory:YES];
+                    if ([fm fileExistsAtPath:[[nested URLByAppendingPathComponent:@"release-manifest.json"] path]]) base = nested;
+                }
+                for (NSString *file in files) {
+                    NSURL *from = [base URLByAppendingPathComponent:file];
+                    NSURL *to = [stage URLByAppendingPathComponent:file];
+                    NSNumber *regular = nil, *symlink = nil;
+                    readError = nil;
+                    if (![from getResourceValue:&regular forKey:NSURLIsRegularFileKey error:&readError] ||
+                        ![from getResourceValue:&symlink forKey:NSURLIsSymbolicLinkKey error:&readError] ||
+                        !regular.boolValue || symlink.boolValue) {
+                        readProblem = [NSString stringWithFormat:@"Không đọc được %@: %@",file,readError.localizedDescription ?: @"không phải file thường"];
+                        break;
+                    }
+                    if (![fm createDirectoryAtURL:to.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:&readError] ||
+                        ![fm copyItemAtURL:from toURL:to error:&readError]) {
+                        readProblem = [NSString stringWithFormat:@"%@: %@",file,readError.localizedDescription ?: @"copy thất bại"];
+                        break;
+                    }
+                }
+            }];
+            problem = readProblem ?: coordError.localizedDescription;
         }
         if (!problem) {
             NSDictionary *manifest = [self jsonAt:[stage URLByAppendingPathComponent:@"release-manifest.json"]];
@@ -231,6 +296,7 @@
         if (!problem && ![fm moveItemAtURL:stage toURL:destination error:&error]) problem = error.localizedDescription;
         if (problem) [fm removeItemAtURL:stage error:nil];
         if (scoped) [source stopAccessingSecurityScopedResource];
+        if (removeSource) [fm removeItemAtURL:source error:nil];
         dispatch_async(dispatch_get_main_queue(), ^{
             self.importing = NO;
             self.startButton.enabled = YES;
