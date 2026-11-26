@@ -59,8 +59,12 @@ static_assert(option::defaultToSpeaker ==
     AVAudioSessionCategoryOptionDefaultToSpeaker);
 static_assert(option::allowBluetoothA2DP ==
     AVAudioSessionCategoryOptionAllowBluetoothA2DP);
+// This option is unavailable below iOS 26. Keep the portable bit in
+// CategoryPlan, but do not submit it to older AVAudioSession versions.
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 260000
 static_assert(option::bluetoothHighQualityRecording ==
     AVAudioSessionCategoryOptionBluetoothHighQualityRecording);
+#endif
 
 /* The option bits whose loss changes where the audio goes. */
 constexpr std::uint32_t routingOptions = option::allowBluetoothHandsFree |
@@ -132,7 +136,12 @@ bool apply() noexcept
         AVAudioSession* session = [AVAudioSession sharedInstance];
         NSError* error = nil;
         const bool recording = captureNeeds;
-        const CategoryPlan wanted = categoryPlan(recording, !bluetoothRefused);
+        CategoryPlan wanted = categoryPlan(recording, !bluetoothRefused);
+        if (@available(iOS 26.0, *)) {
+            // The high-quality Bluetooth recording option is supported.
+        } else {
+            wanted.options &= ~option::bluetoothHighQualityRecording;
+        }
         if (!holds(session, wanted) && !setCategory(session, wanted, &error)) {
             // The microphone worked before the Bluetooth options, and a
             // session that refuses them must not cost the guest it.
