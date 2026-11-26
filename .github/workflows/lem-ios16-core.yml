@@ -77,3 +77,44 @@ jobs:
           name: lem-ios16-core-logs
           path: .build/legacy-logs/
           if-no-files-found: warn
+  gpu:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GPU build tools
+        run: |
+          brew install cmake ninja meson pkgconf bison flex
+          python3 -m venv .build/gpu-tools-venv
+          .build/gpu-tools-venv/bin/pip install meson mako packaging pyyaml
+      - name: Prepare authenticated GPU sources
+        shell: bash
+        run: |
+          mkdir -p .build/legacy-gpu-logs
+          set -o pipefail
+          dependencies/prepare.sh --product apple-gpu-vulkan-experiment 2>&1 | tee .build/legacy-gpu-logs/prepare.log
+      - name: Build verified iPhone softpipe GPU prefix
+        shell: bash
+        run: |
+          set -o pipefail
+          export PATH="$PWD/.build/gpu-tools-venv/bin:$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
+          dependencies/build-apple-gpu.sh --platform ios --jobs 3 2>&1 | tee .build/legacy-gpu-logs/gpu-build.log
+      - name: Compile GPU device code for iOS 16
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --preset ios-device -B .build/legacy-gpu -DUML_BUILD_GPU=ON -DUML_BUILD_AUDIO=OFF 2>&1 | tee .build/legacy-gpu-logs/configure.log
+          cmake --build .build/legacy-gpu --parallel 3 2>&1 | tee .build/legacy-gpu-logs/build.log
+      - name: Upload GPU logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lem-ios16-gpu-logs
+          path: .build/legacy-gpu-logs/
+          if-no-files-found: warn
+      - name: Upload verified GPU prefix
+        uses: actions/upload-artifact@v4
+        with:
+          name: lem-ios16-softpipe-prefix
+          path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
+          if-no-files-found: error
