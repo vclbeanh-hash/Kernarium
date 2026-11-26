@@ -310,15 +310,24 @@ else
 	MESA_MACHINE_ARGS=
 fi
 
+# Verify byte order before supplying Mesa's constants to strict C11 code.
+LEGACY_ENDIAN_ARGS=
+if [ "$PLATFORM" = ios ]; then
+	"$CC" -target "$TARGET" -isysroot "$SDK_ROOT" -dM -E -x c /dev/null |
+		grep -q '^#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__$' ||
+		fail "legacy iOS target must be little-endian"
+	LEGACY_ENDIAN_ARGS=", '-DUTIL_ARCH_LITTLE_ENDIAN=1', '-DUTIL_ARCH_BIG_ENDIAN=0'"
+fi
+
 cat > "$EPOXY_CROSS" <<EOF
 [properties]
 needs_exe_wrapper = true
 
 [built-in options]
-c_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include']
-cpp_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include']
-objc_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include']
-objcpp_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include']
+c_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include'$LEGACY_ENDIAN_ARGS]
+cpp_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include'$LEGACY_ENDIAN_ARGS]
+objc_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include'$LEGACY_ENDIAN_ARGS]
+objcpp_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-I$STAGE/include'$LEGACY_ENDIAN_ARGS]
 c_link_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-L$STAGE/lib'$OBJC_RUNTIME_LINK]
 cpp_link_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-L$STAGE/lib'$OBJC_RUNTIME_LINK]
 objc_link_args = ['-arch', 'arm64', '-target', '$TARGET', '-isysroot', '$SDK_ROOT', '-L$STAGE/lib'$OBJC_RUNTIME_LINK]
