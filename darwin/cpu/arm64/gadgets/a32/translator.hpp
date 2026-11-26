@@ -92,7 +92,7 @@ class Translator final {
 public:
 	Translator(const BuildInput &input,
 		   const Builder::LinkResolver &links,
-		   std::pmr::memory_resource *storage,
+		   uml::compat::pmr::memory_resource *storage,
 		   const Builder::IndirectLinkResolver &indirects,
 		   const Profile &profile, std::size_t block_instructions)
 		: input_{input}, links_{links}, indirects_{indirects},
