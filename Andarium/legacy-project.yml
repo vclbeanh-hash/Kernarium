@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Experimental device-only Xcode 26 project for the legacy port.
+name: Andarium
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+packages:
+  AndariumCore:
+    path: AndariumCore
+  GuestHostCore:
+    path: ../GuestHost/Core
+targets:
+  Andarium:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Andarium/Shared
+        excludes: ["DuskJade.icon", "FollowX/**"]
+      - path: Andarium/Live
+      - path: ../GuestHost/Sources
+      - path: Localization
+        excludes: ["FollowX.xcstrings"]
+      - path: Config/PrivacyInfo.xcprivacy
+    dependencies:
+      - package: AndariumCore
+        product: AndariumCore
+      - package: GuestHostCore
+        product: GuestHostCore
+      - framework: ../.build/legacy-app-frameworks/LibZstd.xcframework
+        embed: false
+    configFiles:
+      Debug: Config/Andarium.xcconfig
+      Release: Config/Andarium.xcconfig
+    settings:
+      base:
+        PRODUCT_NAME: Andarium
+        PRODUCT_MODULE_NAME: Andarium
+        PRODUCT_BUNDLE_IDENTIFIER: com.lem.andarium.legacy
+        MARKETING_VERSION: "1.1"
+        CURRENT_PROJECT_VERSION: "27"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Config/Info.plist
+        INFOPLIST_PREPROCESS: YES
+        INFOPLIST_PREPROCESSOR_DEFINITIONS: "FOLLOW_X_OFF=1 UPDATE_OFF=1"
+        INFOPLIST_OTHER_PREPROCESSOR_FLAGS: "-traditional -undef"
+        INFOPLIST_KEY_CFBundleDisplayName: LEM Andarium
+        INFOPLIST_KEY_NSCameraUsageDescription: Allow camera access only when enabled in the guest.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Allow microphone access only when enabled in the guest.
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: Allow location access only when enabled in the guest.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Allow guest apps to access the local network.
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: NO
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        SWIFT_OBJC_BRIDGING_HEADER: Config/Andarium-Bridging-Header.h
+        SWIFT_VERSION: "5.0"
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+        CLANG_ENABLE_OBJC_ARC: YES
+        CLANG_CXX_LANGUAGE_STANDARD: "c++23"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+        CODE_SIGN_ENTITLEMENTS: Config/Andarium.entitlements
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTED_PLATFORMS: iphoneos
+schemes:
+  Andarium:
+    build:
+      targets:
+        Andarium: all
