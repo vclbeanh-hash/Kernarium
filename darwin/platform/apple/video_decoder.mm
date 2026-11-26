@@ -102,6 +102,7 @@ bool high10Available()
     return false;
 #else
     static const bool available = [] {
+        if (@available(iOS 17.0, macOS 10.9, *)) {
         // Same profile-specific sequence as the maintained Virgl backend.
         const std::uint8_t sps[] = {0x67, 0x6e, 0x00, 0x0a, 0xa6, 0xcd, 0x94, 0x42,
             0x6c, 0x04, 0x40, 0x00, 0x00, 0x03, 0x00, 0x40, 0x00, 0x00, 0x1e, 0x03,
@@ -125,6 +126,8 @@ bool high10Available()
             kCFAllocatorDefault, hardware.address()) == noErr && hardware.get() == kCFBooleanTrue;
         VTDecompressionSessionInvalidate(session.get());
         return result;
+        }
+        return false;
     }();
     return available;
 #endif
@@ -952,6 +955,7 @@ private:
         const OSType planarFormat = format_.bitDepth <= 8
             ? (fullRange ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
             : (fullRange ? kCVPixelFormatType_420YpCbCr10BiPlanarFullRange : kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange);
+        if (@available(iOS 17.0, macOS 10.9, *)) {
         NSDictionary* specification = @{(__bridge NSString*)kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: @YES};
         VTDecompressionOutputCallbackRecord callback {output, this};
         const auto create = [&](OSType pixelFormat) {
@@ -983,6 +987,9 @@ private:
             checked(status, "verify hardware video decoder");
             if (hardware.get() != kCFBooleanTrue)
                 throw std::runtime_error("video decoder did not select hardware");
+        }
+        } else {
+            throw std::runtime_error("hardware-only video decoding unavailable on this OS");
         }
     }
 
@@ -1104,6 +1111,11 @@ static bool vp9Profile2Available()
 std::vector<VideoDecodeCapability> videoDecodeCapabilities()
 {
     std::vector<VideoDecodeCapability> result;
+    if (@available(iOS 17.0, macOS 10.9, *)) {
+        // Hardware-only session creation and verification are available.
+    } else {
+        return result;
+    }
     if (VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)) {
         // Level 5.2 is the last whose frames the hardware opens in full: it
         // decodes a level 5.2, 6.0 or 6.2 stream of 4096 x 2304 alike, and
