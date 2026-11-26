@@ -524,7 +524,12 @@ RawVideoLayout referenceInput(const VideoEncodeProfileCapability& profile)
 std::set<std::string> listedProfileValues(CMVideoCodecType type)
 {
     std::set<std::string> values;
-    NSDictionary* specification = @{(__bridge NSString*)kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: @YES};
+    NSDictionary* specification = nil;
+    if (@available(iOS 17.4, macOS 10.9, *)) {
+        specification = @{(__bridge NSString*)kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: @YES};
+    } else {
+        return values;
+    }
     CFDictionaryRef properties = nullptr;
     CFStringRef identifier = nullptr;
     if (VTCopySupportedPropertyDictionaryForEncoder(1280, 720, type, (__bridge CFDictionaryRef)specification, &identifier, &properties) != noErr)
