@@ -3,6 +3,7 @@
 #include "host_gpu_memory.hpp"
 
 #import <Metal/Metal.h>
+#import <TargetConditionals.h>
 #include <mach/mach.h>
 
 #include <algorithm>
@@ -44,6 +45,11 @@ std::uint64_t hostGraphicsFootprintBytes() noexcept
     return static_cast<std::uint64_t>(std::max<std::int64_t>(bytes, 0));
 }
 
+#if TARGET_OS_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED < 180000
+// Metal residency sets are not available on legacy iOS. This optional
+// retirement hint is unavailable; retain the ordinary GPU counters above.
+void retireFreedGpuMemory(std::chrono::milliseconds) noexcept {}
+#else
 namespace {
 
 /* What the retire asks to be made resident: a residency set holding one small
@@ -107,5 +113,7 @@ void retireFreedGpuMemory(std::chrono::milliseconds wait) noexcept
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
+
+#endif
 
 } // namespace uml::platform
