@@ -187,3 +187,94 @@ jobs:
           name: lem-ios16-android-runtime
           path: .build/kernarium-runtime-ios-device-android-4k/Kernarium/Runtime/KRuntime_Android_6_18_4K.framework/
           if-no-files-found: error
+  app:
+    needs: [gpu, runtime]
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install legacy application build tools
+        run: |
+          brew install cmake ninja xcodegen
+          mkdir -p .build/legacy-app-logs .build/legacy-app-frameworks
+      - name: Restore GPU prefix
+        uses: actions/download-artifact@v4
+        with:
+          name: lem-ios16-softpipe-prefix
+          path: .build/legacy-app-gpu
+      - name: Restore compiled Android runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: lem-ios16-android-runtime
+          path: .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework
+      - name: Build and verify iOS 16 storage libraries
+        shell: bash
+        run: |
+          set -o pipefail
+          dependencies/prepare.sh --product ios-compression 2>&1 | tee .build/legacy-app-logs/zstd-prepare.log
+          dependencies/build-ios-zstd.sh --jobs 3 2>&1 | tee .build/legacy-app-logs/zstd-build.log
+          cp -R .build/dependencies/ios-zstd/LibZstd.xcframework .build/legacy-app-frameworks/
+          dependencies/prepare.sh --product ios-storage 2>&1 | tee .build/legacy-app-logs/storage-prepare.log
+          dependencies/build-ios-storage.sh --jobs 3 2>&1 | tee .build/legacy-app-logs/storage-build.log
+      - name: Generate legacy app project
+        shell: bash
+        run: |
+          cd Andarium
+          mv Andarium.xcodeproj Andarium.upstream.xcodeproj
+          xcodegen generate --spec legacy-project.yml --project "$PWD"
+      - name: Compile and link application for iOS 16
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild -project Andarium/Andarium.xcodeproj -scheme Andarium \
+            -destination 'generic/platform=iOS' -configuration Release \
+            -derivedDataPath "$PWD/.build/legacy-app" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 build \
+            2>&1 | tee .build/legacy-app-logs/app-build.log
+      - name: Stage verified Android 17 system image
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p .build/android/releases
+          curl -fL --retry 3 -o .build/android/system.tar.gz \
+            https://github.com/imxieyi/Kernarium/releases/download/andarium-1.1/lineage24-mainline6.18-4k-20261121-los24-r29.tar.gz
+          tar -xzf .build/android/system.tar.gz -C .build/android/releases
+          python3 Andarium/scripts/stage-system-image.py 2>&1 | tee .build/legacy-app-logs/system.log
+      - name: Assemble experimental iOS 16 IPA
+        shell: bash
+        run: |
+          set -o pipefail
+          app="$PWD/.build/legacy-package/Payload/Andarium.app"
+          mkdir -p "$(dirname "$app")"
+          cp -R .build/legacy-app/Build/Products/Release-iphoneos/Andarium.app "$app"
+          mkdir -p "$app/Frameworks"
+          for name in MesaEGL MesaGallium; do
+            cp -R ".build/legacy-app-gpu/Frameworks/$name.framework" "$app/Frameworks/"
+          done
+          cp -R .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework "$app/Frameworks/"
+          cp -R .build/andarium-system "$app/andarium-system"
+          for framework in "$app/Frameworks/"*.framework; do
+            codesign --force --sign - "$framework"
+            codesign --verify "$framework"
+            xcrun vtool -show-build "$framework/$(basename "$framework" .framework)"
+          done
+          codesign --force --sign - --entitlements Andarium/Config/Andarium.entitlements "$app"
+          codesign --verify --deep --strict "$app"
+          xcrun vtool -show-build "$app/Andarium"
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist"
+          (cd .build/legacy-package && ditto -c -k --sequesterRsrc --keepParent Payload LEM-Andarium-iOS16-experimental.ipa)
+          test -s .build/legacy-package/LEM-Andarium-iOS16-experimental.ipa
+      - name: Upload application diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lem-ios16-app-logs
+          path: .build/legacy-app-logs/
+          if-no-files-found: warn
+      - name: Upload experimental IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LEM-Andarium-iOS16-experimental
+          path: .build/legacy-package/LEM-Andarium-iOS16-experimental.ipa
+          if-no-files-found: error
