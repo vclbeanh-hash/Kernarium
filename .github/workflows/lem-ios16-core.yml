@@ -8,7 +8,7 @@ on:
         type: boolean
         default: false
       runtime_build:
-        description: Rebuild Runtime with verified GPU (otherwise reuse Build 53)
+        description: Rebuild Runtime with verified GPU (otherwise reuse Build 58)
         type: boolean
         default: false
   push:
@@ -131,7 +131,7 @@ jobs:
           path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
           if-no-files-found: error
   runtime:
-    if: ${{ always() && !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.full_build || inputs.runtime_build))) && ((needs.gpu.result == 'success' && needs.core.result == 'success') || (needs.gpu.result == 'skipped' && needs.core.result == 'skipped')) }}
+    if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.full_build || inputs.runtime_build) && ((needs.gpu.result == 'success' && needs.core.result == 'success') || (needs.gpu.result == 'skipped' && needs.core.result == 'skipped')) }}
     needs: [gpu, core]
     runs-on: macos-26
     timeout-minutes: 120
@@ -231,8 +231,8 @@ jobs:
         if: ${{ needs.runtime.result == 'skipped' }}
         shell: bash
         run: |
-          git diff --exit-code d72f5a12cbfcc834e0857698bcfda7f19004553c HEAD -- CMakeLists.txt CMakePresets.json cmake darwin kernel android dependencies Kernarium scripts
-          echo "Reusing verified Runtime from Build 53 and GPU from Build 36"
+          git diff --exit-code 00bb7089780103c9530825fd81432715dbce0ca3 HEAD -- CMakeLists.txt CMakePresets.json cmake darwin kernel android dependencies Kernarium scripts
+          echo "Reusing verified Runtime from Build 58 and GPU from Build 36"
       - name: Install legacy application build tools
         run: |
           xcodebuild -version
@@ -262,7 +262,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 45781067606
+          run-id: 45796539926
           name: lem-ios16-android-runtime
           path: .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework
       - name: Compile minimal UIKit boot application for iOS 16
@@ -276,20 +276,11 @@ jobs:
           xcrun --sdk iphoneos clang++ -arch arm64 -miphoneos-version-min=16.0 \
             -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -std=c++23 -fobjc-arc -fblocks -O2 -Werror=unguarded-availability-new \
-            -framework UIKit -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
+            -framework UIKit -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics -framework UniformTypeIdentifiers \
             -Wl,-rpath,@executable_path/Frameworks \
             Andarium/LegacyBoot/main.mm GuestHost/Sources/KernariumRuntimeLoader.mm \
             -o "$app/Andarium" 2>&1 | tee .build/legacy-app-logs/app-build.log
           xcrun vtool -show-build "$app/Andarium"
-      - name: Stage verified Android 17 system image
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p .build/android/releases
-          curl -fL --retry 3 -o .build/android/system.tar.gz \
-            https://github.com/imxieyi/Kernarium/releases/download/andarium-1.1/lineage24-mainline6.18-4k-20261121-los24-r29.tar.gz
-          tar -xzf .build/android/system.tar.gz -C .build/android/releases
-          python3 Andarium/scripts/stage-system-image.py 2>&1 | tee .build/legacy-app-logs/system.log
       - name: Assemble experimental iOS 16 IPA
         shell: bash
         run: |
@@ -302,7 +293,6 @@ jobs:
             cp -R ".build/legacy-app-gpu/Frameworks/$name.framework" "$app/Frameworks/"
           done
           cp -R .build/legacy-app-frameworks/KRuntime_Android_6_18_4K.framework "$app/Frameworks/"
-          cp -R .build/andarium-system "$app/andarium-system"
           for framework in "$app/Frameworks/"*.framework; do
             codesign --force --sign - "$framework"
             codesign --verify "$framework"
@@ -312,8 +302,12 @@ jobs:
           codesign --verify --deep --strict "$app"
           xcrun vtool -show-build "$app/Andarium"
           /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist"
-          (cd .build/legacy-package && ditto -c -k --sequesterRsrc --keepParent Payload LEM-Andarium-iOS16-experimental.ipa)
-          test -s .build/legacy-package/LEM-Andarium-iOS16-experimental.ipa
+          (cd .build/legacy-package && ditto -c -k --sequesterRsrc --keepParent Payload LEM-Andarium-Lite-iOS16.ipa)
+          test -s .build/legacy-package/LEM-Andarium-Lite-iOS16.ipa
+          test ! -e "$app/andarium-system"
+          bytes="$(stat -f %z .build/legacy-package/LEM-Andarium-Lite-iOS16.ipa)"
+          echo "Lite IPA size: $bytes bytes"
+          test "$bytes" -lt 100000000
       - name: Upload application diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -324,6 +318,6 @@ jobs:
       - name: Upload experimental IPA
         uses: actions/upload-artifact@v4
         with:
-          name: LEM-Andarium-iOS16-experimental
-          path: .build/legacy-package/LEM-Andarium-iOS16-experimental.ipa
+          name: LEM-Andarium-Lite-iOS16
+          path: .build/legacy-package/LEM-Andarium-Lite-iOS16.ipa
           if-no-files-found: error
