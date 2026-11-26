@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+name: LEM iOS 16 core compatibility
+on:
+  workflow_dispatch:
+  push:
+    branches: [lem-ios16-legacy]
+permissions:
+  contents: read
+concurrency:
+  group: legacy-core-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          xcodebuild -version
+          brew install cmake ninja
+      - name: Verify deployment floor
+        shell: bash
+        run: |
+          mkdir -p .build/legacy-logs
+          set -o pipefail
+          python3 tests/tooling/cmake/test_apple_deployment_floor.py --cmake "$(command -v cmake)" --toolchain cmake/toolchains/Apple.cmake 2>&1 | tee .build/legacy-logs/floor.log
+      - name: Configure iOS 16 core without GPU or guest kernel
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --preset ios-device -B .build/legacy-core -DCMAKE_CXX_FLAGS=-Werror=unguarded-availability-new -DCMAKE_OBJCXX_FLAGS=-Werror=unguarded-availability-new 2>&1 | tee .build/legacy-logs/configure.log
+      - name: Compile iOS 16 core
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build .build/legacy-core --parallel 2 2>&1 | tee .build/legacy-logs/build.log
+      - name: Upload compiler diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lem-ios16-core-logs
+          path: .build/legacy-logs/
+          if-no-files-found: warn
