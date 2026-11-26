@@ -7,6 +7,7 @@
 #include "memory/shared_backing.hpp"
 
 #include <cstdio>
+#include <cerrno>
 #include <mutex>
 
 #include <sys/mman.h>
@@ -332,21 +333,44 @@ NativeKernelLayout reserve_native_kernel_window(
 	void *reserved = mmap(reinterpret_cast<void *>(geometry.window_start),
 		reservation, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1,
 		0);
-	if (reserved != MAP_FAILED &&
-	    reinterpret_cast<std::uintptr_t>(reserved) != geometry.window_start) {
-		munmap(reserved, reservation);
-		reserved = placement == WindowPlacement::exact ? MAP_FAILED :
-			mmap(nullptr, reservation, PROT_NONE,
-				MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+	// A legacy iOS host may reject the hint outright instead of returning
+	// a different address. In anywhere mode, try the ordinary unhinted
+	// reservation in either case; never overwrite a host mapping.
+	if (reserved == MAP_FAILED) {
+		std::fprintf(stderr, "UML window: hinted mmap failed at %#llx, errno=%d\n",
+			static_cast<unsigned long long>(geometry.window_start), errno);
+	} else {
+		const auto actual = reinterpret_cast<std::uintptr_t>(reserved);
+		const bool usable = actual >= DARWIN_UML_NATIVE_LINK_ADDRESS &&
+			(actual & (DARWIN_UML_GUEST_PAGE_SIZE - 1U)) == 0U;
+		if (!usable || (placement == WindowPlacement::exact &&
+		    actual != geometry.window_start)) {
+			std::fprintf(stderr, "UML window: hinted mmap returned unsuitable address %#llx\n",
+				static_cast<unsigned long long>(actual));
+			munmap(reserved, reservation);
+			reserved = MAP_FAILED;
+		}
+	}
+	if (reserved == MAP_FAILED && placement == WindowPlacement::anywhere) {
+		reserved = mmap(nullptr, reservation, PROT_NONE,
+			MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+		if (reserved == MAP_FAILED)
+			std::fprintf(stderr, "UML window: unhinted mmap failed, errno=%d\n", errno);
 	}
 	if (reserved == MAP_FAILED)
 		return {};
 	const auto base = reinterpret_cast<std::uintptr_t>(reserved);
 	if ((base & (DARWIN_UML_GUEST_PAGE_SIZE - 1U)) != 0U ||
 	    base < DARWIN_UML_NATIVE_LINK_ADDRESS) {
+		std::fprintf(stderr, "UML window: returned base %#llx below/ outside required alignment (floor %#llx)\n",
+			static_cast<unsigned long long>(base),
+			static_cast<unsigned long long>(DARWIN_UML_NATIVE_LINK_ADDRESS));
 		munmap(reserved, reservation);
 		return {};
 	}
+	std::fprintf(stderr, "UML window: reserved %#llx, %llu bytes\n",
+		static_cast<unsigned long long>(base),
+		static_cast<unsigned long long>(reservation));
 	return reserved_layout(base, length);
 }
 
