@@ -95,6 +95,7 @@ ios-simulator)
 		DEFAULT_PREFIX="$ROOT_DIR/.build/dependencies/ios-simulator-arm64/network"
 	;;
 ios)
+	DEPLOYMENT_TARGET=16.0
 	SDK_NAME=iphoneos
 	TARGET=arm64-apple-ios${DEPLOYMENT_TARGET}
 	SUBSYSTEM=ios
