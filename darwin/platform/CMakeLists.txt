@@ -150,10 +150,16 @@ add_library(UML::VideoStabilization ALIAS uml_video_stabilization)
 uml_declare_architecture_target(uml_video_stabilization platform)
 target_include_directories(uml_video_stabilization PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+# The legacy device port does not advertise cameras until its capture APIs
+# have been ported. Keep the real provider on supported newer platforms.
+set(_uml_camera_capture apple/camera_capture.mm)
+if(UML_APPLE_PLATFORM STREQUAL "ios" AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "26.0")
+    set(_uml_camera_capture apple/camera_legacy.cpp)
+endif()
 add_library(uml_apple_camera STATIC
     apple/accelerated_nv12.cpp
     apple/camera_authorization.mm
-    apple/camera_capture.mm
+    ${_uml_camera_capture}
     apple/key_path_observer.mm
     apple/photo_metadata.cpp
     apple/turned_still.mm)
