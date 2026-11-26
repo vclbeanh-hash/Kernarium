@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <memory_resource>
+#include "cpu/legacy_memory_resource.hpp"
 #include <new>
 #include <vector>
 
@@ -67,7 +67,7 @@ namespace uml::cpu::gadget_cache {
  */
 class BodyArena final {
 public:
-	explicit BodyArena(std::pmr::memory_resource *upstream) noexcept
+	explicit BodyArena(uml::compat::pmr::memory_resource *upstream) noexcept
 		: upstream_{upstream}
 	{}
 
@@ -619,7 +619,7 @@ private:
 		return address < chunk.base + chunk_bytes ? &chunk : nullptr;
 	}
 
-	std::pmr::memory_resource *upstream_;
+	uml::compat::pmr::memory_resource *upstream_;
 	gadget_cache::Account *meter_{};
 	/* In address order. */
 	std::vector<Chunk> chunks_;
