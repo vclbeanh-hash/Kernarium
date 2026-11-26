@@ -14,9 +14,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/VerifyPrefix.cmake")
 if(PLATFORM STREQUAL "ios-simulator")
     set(_platform_receipt ios-simulator-network-arm64.tsv)
     set(_mach_platform 7)
+    set(_deployment_target 26.0)
 elseif(PLATFORM STREQUAL "ios")
     set(_platform_receipt ios-device-network-arm64.tsv)
     set(_mach_platform 2)
+    set(_deployment_target 16.0)
 else()
     message(FATAL_ERROR "Unsupported iOS network platform: ${PLATFORM}")
 endif()
@@ -52,5 +54,5 @@ uml_verify_provenance_copy(
 foreach(_archive IN ITEMS
         libpcre2-8.a libffi.a libintl.a libglib-2.0.a libslirp.a)
     uml_verify_apple_binary(PATH "${PREFIX}/lib/${_archive}"
-        PLATFORM ${_mach_platform} MINOS 26.0)
+        PLATFORM ${_mach_platform} MINOS ${_deployment_target})
 endforeach()
