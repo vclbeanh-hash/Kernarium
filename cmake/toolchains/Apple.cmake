@@ -6,14 +6,14 @@ list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES UML_APPLE_PLATFORM)
 set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "Apple architectures" FORCE)
 
 # Each platform's SDK, CMake system name and deployment floor, which its
-# dependency prefixes record as well. macOS builds at 27.0; iOS and the iOS
-# Simulator build at 26.0 and guard the newer APIs they use.
+# dependency prefixes record as well. This experimental device port targets
+# iOS 16.0; the macOS and Simulator floors remain unchanged.
 if(UML_APPLE_PLATFORM STREQUAL "macos")
     set(_uml_apple_platform macosx Darwin)
     set(_uml_apple_deployment_target 27.0)
 elseif(UML_APPLE_PLATFORM STREQUAL "ios")
     set(_uml_apple_platform iphoneos iOS)
-    set(_uml_apple_deployment_target 26.0)
+    set(_uml_apple_deployment_target 16.0)
 elseif(UML_APPLE_PLATFORM STREQUAL "ios-simulator")
     set(_uml_apple_platform iphonesimulator iOS)
     set(_uml_apple_deployment_target 26.0)
