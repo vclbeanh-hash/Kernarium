@@ -2,6 +2,8 @@
 // Minimal iOS 16 boot diagnostic frontend. Uses the upstream runtime loader.
 #import <UIKit/UIKit.h>
 #import <MetalKit/MetalKit.h>
+#include <unistd.h>
+#include <cstdio>
 #import "../../GuestHost/Sources/KernariumRuntimeLoader.h"
 
 @interface LegacyMetalView : MTKView
@@ -12,8 +14,8 @@
     if (!self.guestRunning || !self.bounds.size.width || !self.bounds.size.height) return;
     UITouch *touch = touches.anyObject;
     CGPoint p = [touch locationInView:self];
-    uint32_t x = (uint32_t)MAX(0, MIN(719, p.x / self.bounds.size.width * 720));
-    uint32_t y = (uint32_t)MAX(0, MIN(1279, p.y / self.bounds.size.height * 1280));
+    uint32_t x = (uint32_t)MAX(0, MIN(KERNARIUM_RUNTIME_TOUCH_MAXIMUM, p.x / self.bounds.size.width * KERNARIUM_RUNTIME_TOUCH_MAXIMUM));
+    uint32_t y = (uint32_t)MAX(0, MIN(KERNARIUM_RUNTIME_TOUCH_MAXIMUM, p.y / self.bounds.size.height * KERNARIUM_RUNTIME_TOUCH_MAXIMUM));
     kernarium_runtime_loader_send_touch(0, x, y, pressed);
 }
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event { [self send:touches pressed:1]; }
@@ -31,6 +33,8 @@
 @property(nonatomic,strong) UIButton *startButton;
 @property(nonatomic,strong) UIButton *stopButton;
 @property(nonatomic) BOOL running;
+@property(nonatomic,strong) NSPipe *hostLogPipe;
+@property(nonatomic,strong) NSFileHandle *hostLogReader;
 @end
 @implementation LegacyController
 - (UIButton *)button:(NSString *)title action:(SEL)action {
@@ -63,7 +67,8 @@
     self.console = [UITextView new];
     self.console.editable = NO;
     self.console.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
-    self.console.text = @"Serial console\n";
+    self.console.text = @"Host + Android console • Build diagnostic\n";
+    [self captureHostLogs];
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[self.status,buttons,self.screen,self.console]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 8;
@@ -80,6 +85,25 @@
     ]];
     [self.screen setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisVertical];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(stopGuest) name:UIApplicationDidEnterBackgroundNotification object:nil];
+}
+- (void)captureHostLogs {
+    self.hostLogPipe = [NSPipe pipe];
+    self.hostLogReader = self.hostLogPipe.fileHandleForReading;
+    int fd = self.hostLogPipe.fileHandleForWriting.fileDescriptor;
+    if (dup2(fd, STDERR_FILENO) < 0 || dup2(fd, STDOUT_FILENO) < 0) {
+        [self appendLog:@"Unable to redirect host output.\n"];
+        return;
+    }
+    setvbuf(stderr, nullptr, _IONBF, 0);
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    __weak LegacyController *weakSelf = self;
+    self.hostLogReader.readabilityHandler = ^(NSFileHandle *handle) {
+        NSData *data = handle.availableData;
+        if (!data.length) { handle.readabilityHandler = nil; return; }
+        NSString *line = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        if (!line) line = [[NSString alloc] initWithData:data encoding:NSISOLatin1StringEncoding];
+        dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf appendLog:line]; });
+    };
 }
 - (void)appendLog:(NSString *)line {
     NSString *combined = [self.console.text stringByAppendingString:line ?: @""];
@@ -102,6 +126,12 @@
     }
     NSString *disk = [[dir URLByAppendingPathComponent:@"android-data.img"] path];
     NSString *record = [[dir URLByAppendingPathComponent:@"session.json"] path];
+    [self appendLog:@"\n--- Start diagnostic ---\n"];
+    [self appendLog:[NSString stringWithFormat:@"iOS %@, RAM %llu MiB\n",UIDevice.currentDevice.systemVersion,(unsigned long long)(NSProcessInfo.processInfo.physicalMemory >> 20)]];
+    NSString *frameworks = NSBundle.mainBundle.privateFrameworksPath;
+    NSError *listError = nil;
+    NSArray *entries = frameworks ? [NSFileManager.defaultManager contentsOfDirectoryAtPath:frameworks error:&listError] : nil;
+    [self appendLog:[NSString stringWithFormat:@"Frameworks: %@\n",entries ? [entries componentsJoinedByString:@", "] : (listError.localizedDescription ?: @"missing")]];
     self.running = YES;
     self.startButton.enabled = NO;
     self.stopButton.enabled = YES;
@@ -116,8 +146,11 @@
     });
     LegacyMetalView *screen = self.screen;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
-        int result = kernarium_runtime_loader_select(1);
+        std::fprintf(stderr, "Stage 1: selecting Android runtime\n");
+        int result = kernarium_runtime_loader_select(KERNARIUM_RUNTIME_GUEST_ANDROID);
+        std::fprintf(stderr, "Stage 1 result: %d\n", result);
         if (result == 0) {
+            std::fprintf(stderr, "Stage 2: guest memory admission (1024 MiB)\n");
             if (!kernarium_runtime_loader_guest_memory_admitted(1024)) {
                 result = -1;
                 dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf appendLog:@"Host memory admission refused 1024 MiB.\n"]; });
@@ -138,7 +171,9 @@
                 boot.android_aot_disabled = 1;
                 boot.use_jit = 0;
                 boot.android_camera_mode = KERNARIUM_RUNTIME_ANDROID_CAMERA_BLOCKED;
+                std::fprintf(stderr, "Stage 3: entering Android runtime\n");
                 result = kernarium_runtime_loader_run(screen, &boot);
+                std::fprintf(stderr, "Stage 3 result: %d\n", result);
             }
         }
         kernarium_runtime_loader_set_console_output_handler(nil);
