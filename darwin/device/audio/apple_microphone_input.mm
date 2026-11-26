@@ -175,6 +175,7 @@ private:
                 ^(AVAudioPCMBuffer* buffer, AVAudioTime* when) {
                     tap->receive(buffer, when);
                 };
+#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000) || (!TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MAX_ALLOWED >= 270000)
             if (@available(iOS 27.0, *)) {
                 NSError* tapError = nil;
                 if (![input installTapOnBus:0
@@ -185,7 +186,9 @@ private:
                     closeSession();
                     return false;
                 }
-            } else {
+            } else
+#endif
+            {
                 // Before iOS 27 a tap that cannot be installed raises an
                 // exception, which the catch below turns into the same
                 // refusal. iOS 27 deprecates this call, which a host from iOS
@@ -263,6 +266,7 @@ public:
     {
 #if TARGET_OS_IPHONE
         const std::weak_ptr<Capture> weak = capture_;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 270000
         if (@available(iOS 27.0, *)) {
             /* iOS 27 replaces the interruption notification with two, which
              * the playback sink observes too: the session becoming inactive,
@@ -299,7 +303,9 @@ public:
                           capture->resume(context.recommendation ==
                               AVAudioSessionResumptionRecommendationShouldResume);
                         }];
-        } else {
+        } else
+#endif
+        {
             /* Before iOS 27 one notification reports an interruption's
              * beginning and its end, and the end carries the system's advice
              * in its options. iOS 27 deprecates it, which a system from iOS 27
