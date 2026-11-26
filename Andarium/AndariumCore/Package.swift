@@ -10,7 +10,7 @@ import PackageDescription
 let package = Package(
     name: "AndariumCore",
     defaultLocalization: "en",
-    platforms: [.macOS("27.0"), .iOS("26.0")],
+    platforms: [.macOS("27.0"), .iOS("16.0")],
     products: [
         .library(name: "AndariumCore", targets: ["AndariumCore"]),
         // For the application's hosted tests only: neither application links it.
