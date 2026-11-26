@@ -457,7 +457,11 @@ mesa_setup()
 MESA_BUILD="$BUILDS/Mesa"
 MESA_PKG_CONFIG="$BUILDS/empty-mesa-pkgconfig"
 mkdir -p -- "$MESA_PKG_CONFIG"
-MESA_TOOL_PATH="$(dirname -- "$PYTHON"):$(dirname -- "$MESON"):$(dirname -- "$NINJA"):$APPLE_GPU_TOOL_PATH"
+# The isolated Mesa environment must retain the selected parser generators.
+# Otherwise Meson resolves Apple's Bison 2.3 even after finding Bison 3.
+MESA_TOOL_PATH="$(dirname -- "$BISON"):$(dirname -- "$FLEX"):$(dirname -- "$PYTHON"):$(dirname -- "$MESON"):$(dirname -- "$NINJA"):$APPLE_GPU_TOOL_PATH"
+printf '%s\n' "Mesa parser generators: $BISON, $FLEX"
+"$BISON" --version | sed -n '1p'
 VENUS_PROTOCOL_GENERATED_SHA256=
 if [ "$SOFTWARE" -eq 0 ]; then
 	# The protocol producer runs out of tree against authenticated source, so
