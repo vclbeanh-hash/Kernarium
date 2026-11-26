@@ -118,3 +118,72 @@ jobs:
           name: lem-ios16-softpipe-prefix
           path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
           if-no-files-found: error
+  runtime:
+    needs: [gpu, core]
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime build tools
+        run: |
+          brew install cmake ninja meson pkgconf autoconf automake libtool
+          python3 -m venv .build/gpu-tools-venv
+          .build/gpu-tools-venv/bin/pip install meson mako packaging pyyaml
+          mkdir -p .build/legacy-runtime-logs
+      - name: Restore verified device GPU prefix
+        uses: actions/download-artifact@v4
+        with:
+          name: lem-ios16-softpipe-prefix
+          path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
+      - name: Prepare and build iOS 16 network dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          dependencies/prepare.sh --product ios-network 2>&1 | tee .build/legacy-runtime-logs/network-prepare.log
+          export PATH="$PWD/.build/gpu-tools-venv/bin:$PATH"
+          dependencies/build-ios-network.sh --platform ios --jobs 3 2>&1 | tee .build/legacy-runtime-logs/network-build.log
+      - name: Import accepted Android kernel
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p .build/kernel/artifacts
+          curl -fL --retry 3 -o .build/kernel/android.tar.gz \
+            https://github.com/imxieyi/Kernarium/releases/download/andarium-1.1/android-6.18-arm64-4k-20261119-6.18.60-ca1.tar.gz
+          tar -xzf .build/kernel/android.tar.gz -C .build/kernel/artifacts
+          test -f .build/kernel/artifacts/android-6.18-arm64-4k-20261119-6.18.60-ca1/kernel/vmlinux
+      - name: Configure Android runtime with audio, network and softpipe
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --preset kernarium-ios-device-android \
+            -DUML_BUILD_AUDIO=ON \
+            -DCMAKE_CXX_FLAGS=-Werror=unguarded-availability-new \
+            -DCMAKE_OBJCXX_FLAGS=-Werror=unguarded-availability-new \
+            2>&1 | tee .build/legacy-runtime-logs/configure.log
+      - name: Compile and link Android runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build --preset kernarium-ios-device-android --target KernariumRuntime --parallel 3 \
+            2>&1 | tee .build/legacy-runtime-logs/build.log
+      - name: Inspect linked Android runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          binary="$(find .build/kernarium-runtime-ios-device-android-4k -type f -name KRuntime_Android_6_18_4K -print -quit)"
+          test -n "$binary"
+          xcrun vtool -show-build "$binary" | tee .build/legacy-runtime-logs/macho.log
+          xcrun otool -L "$binary" | tee -a .build/legacy-runtime-logs/macho.log
+      - name: Upload runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lem-ios16-runtime-logs
+          path: .build/legacy-runtime-logs/
+          if-no-files-found: warn
+      - name: Upload compiled Android framework
+        uses: actions/upload-artifact@v4
+        with:
+          name: lem-ios16-android-runtime
+          path: .build/kernarium-runtime-ios-device-android-4k/Kernarium/Runtime/KRuntime_Android_6_18_4K.framework/
+          if-no-files-found: error
