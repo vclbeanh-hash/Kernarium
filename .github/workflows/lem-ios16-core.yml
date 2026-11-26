@@ -131,7 +131,7 @@ jobs:
           path: .build/dependencies/apple-gpu-vulkan-experiment/ios-device-arm64/
           if-no-files-found: error
   runtime:
-    if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.full_build || inputs.runtime_build) && ((needs.gpu.result == 'success' && needs.core.result == 'success') || (needs.gpu.result == 'skipped' && needs.core.result == 'skipped')) }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.full_build || inputs.runtime_build))) && ((needs.gpu.result == 'success' && needs.core.result == 'success') || (needs.gpu.result == 'skipped' && needs.core.result == 'skipped')) }}
     needs: [gpu, core]
     runs-on: macos-26
     timeout-minutes: 120
