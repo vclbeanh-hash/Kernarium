@@ -12,7 +12,7 @@ concurrency:
 jobs:
   core:
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
@@ -35,6 +35,41 @@ jobs:
         run: |
           set -o pipefail
           cmake --build .build/legacy-core --parallel 2 2>&1 | tee .build/legacy-logs/build.log
+      - name: Compile actual ELF loader for iOS 16
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --preset ios-device -B .build/legacy-loader \
+            -DUML_BUILD_KERNEL_RUNNER=ON \
+            -DCMAKE_CXX_FLAGS=-Werror=unguarded-availability-new \
+            -DCMAKE_OBJCXX_FLAGS=-Werror=unguarded-availability-new \
+            2>&1 | tee .build/legacy-logs/loader-configure.log
+          cmake --build .build/legacy-loader --target uml_emulator --parallel 2 \
+            2>&1 | tee .build/legacy-logs/loader-build.log
+      - name: Inspect accepted Android kernel and Mach-O carrier
+        shell: bash
+        run: |
+          set -o pipefail
+          (
+            set -e
+            mkdir -p .build/legacy-carrier
+            curl -fL --retry 3 -o .build/legacy-carrier/kernel.tar.gz \
+              https://github.com/imxieyi/Kernarium/releases/download/andarium-1.1/android-6.18-arm64-4k-20261119-6.18.60-ca1.tar.gz
+            tar -xzf .build/legacy-carrier/kernel.tar.gz -C .build/legacy-carrier
+            image="$(find .build/legacy-carrier -type f -path '*/kernel/vmlinux' -print -quit)"
+            test -n "$image"
+            python3 Kernarium/scripts/verify-signed-kernel-carrier.py --image "$image"
+            printf 'int legacy_carrier_probe(void) { return 0; }\n' > .build/legacy-carrier/probe.c
+            xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=16.0 -dynamiclib \
+              .build/legacy-carrier/probe.c \
+              -Wl,-sectcreate,__TEXT,__uml_elf,"$image" \
+              -Wl,-sectalign,__TEXT,__uml_elf,0x4000 \
+              -o .build/legacy-carrier/CarrierProbe.dylib
+            codesign --force --sign - .build/legacy-carrier/CarrierProbe.dylib
+            codesign --verify --verbose=4 .build/legacy-carrier/CarrierProbe.dylib
+            xcrun otool -l .build/legacy-carrier/CarrierProbe.dylib
+            xcrun vtool -show-build .build/legacy-carrier/CarrierProbe.dylib
+          ) 2>&1 | tee .build/legacy-logs/carrier.log
       - name: Upload compiler diagnostics
         if: always()
         uses: actions/upload-artifact@v4
