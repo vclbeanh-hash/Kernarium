@@ -3,9 +3,9 @@
 #include "synthetic_source.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <fstream>
+#include <locale>
 #include <numbers>
 #include <sstream>
 
@@ -27,10 +27,18 @@ constexpr double degreesToRadians = std::numbers::pi / 180.0;
         text.remove_suffix(1);
     if (text.empty())
         return false;
-    const auto [end, error] =
-        std::from_chars(text.data(), text.data() + text.size(), value);
-    return error == std::errc {} && end == text.data() + text.size() &&
-        std::isfinite(value);
+    // Floating-point from_chars requires iOS 26 on Apple's libc++.
+    // Preserve strict, locale-independent parsing on older hosts.
+    if (text.front() == '+')
+        return false;
+    std::istringstream input{std::string(text)};
+    input.imbue(std::locale::classic());
+    double parsed {};
+    input >> std::noskipws >> parsed;
+    if (input.fail() || !input.eof() || !std::isfinite(parsed))
+        return false;
+    value = parsed;
+    return true;
 }
 
 [[nodiscard]] std::vector<std::string_view> split(
