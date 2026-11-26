@@ -18,10 +18,10 @@ if(PLATFORM STREQUAL "macos")
     set(_minimum_os_key LSMinimumSystemVersion)
     set(_deployment_target 27.0)
 elseif(PLATFORM STREQUAL "ios")
-    set(_platform_contract ios-device-gpu-vulkan-arm64.tsv)
+    set(_platform_contract ios-device-gpu-software-arm64.tsv)
     set(_mach_platform 2)
     set(_minimum_os_key MinimumOSVersion)
-    set(_deployment_target 26.0)
+    set(_deployment_target 16.0)
 elseif(PLATFORM STREQUAL "ios-simulator")
     # KosmicKrisp is a Metal 4 driver and the iOS Simulator exposes no Metal 4
     # device, so the Simulator prefix is the software variant: Mesa's llvmpipe
@@ -33,7 +33,7 @@ elseif(PLATFORM STREQUAL "ios-simulator")
 else()
     message(FATAL_ERROR "Unsupported Apple GPU platform: ${PLATFORM}")
 endif()
-if(PLATFORM STREQUAL "ios-simulator")
+if(PLATFORM STREQUAL "ios-simulator" OR PLATFORM STREQUAL "ios")
     set(_software TRUE)
 else()
     set(_software FALSE)
@@ -59,7 +59,7 @@ uml_verify_provenance_copy(
     LABEL "Apple GPU"
     SOURCE "${SOURCE_ROOT}/dependencies/platforms/${_platform_contract}"
     INSTALLED "${PREFIX}/share/uml-dependencies/${_platform_contract}")
-if(_software)
+if(PLATFORM STREQUAL "ios-simulator")
     # llvmpipe is built against the LLVM release this archive manifest pins.
     uml_verify_provenance_copy(
         LABEL "Apple GPU LLVM"
@@ -185,7 +185,7 @@ file(GLOB_RECURSE _installed_provenance LIST_DIRECTORIES false
 list(SORT _installed_provenance)
 set(_expected_provenance
     manifest.tsv "${_platform_contract}" source-trees.tsv build-receipt.tsv)
-if(_software)
+if(PLATFORM STREQUAL "ios-simulator")
     list(APPEND _expected_provenance llvm-archives.tsv)
 endif()
 list(SORT _expected_provenance)
@@ -474,6 +474,9 @@ foreach(_framework IN LISTS _gl_frameworks)
                         "Gallium screen")
                 endif()
             endforeach()
+            if(PLATFORM STREQUAL "ios" AND (_all_symbols MATCHES "_llvmpipe_create_screen" OR _all_symbols MATCHES "_(LLVM[A-Za-z]|ZN4llvm)"))
+                message(FATAL_ERROR "Legacy iOS GPU must contain softpipe only, without LLVM")
+            endif()
         elseif(_all_symbols MATCHES "_(softpipe|llvmpipe)_create_screen")
             message(FATAL_ERROR
                 "MesaGallium.framework carries a software Gallium screen")
