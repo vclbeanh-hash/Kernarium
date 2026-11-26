@@ -119,7 +119,10 @@
             [self appendLog:[NSString stringWithFormat:@"Missing image: %@\n",file]]; return;
         }
     }
-    NSURL *dir = [[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] firstObject];
+    // UML UBD paths must not contain spaces. Match upstream Library/Guest.
+    NSURL *library = [[NSFileManager.defaultManager URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask] firstObject];
+    NSURL *dir = [library URLByAppendingPathComponent:@"Guest" isDirectory:YES];
+    if (!dir) { [self appendLog:@"Cannot locate Library/Guest.\n"]; return; }
     NSError *error = nil;
     if (![NSFileManager.defaultManager createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:&error]) {
         [self appendLog:error.localizedDescription]; return;
@@ -127,6 +130,7 @@
     NSString *disk = [[dir URLByAppendingPathComponent:@"android-data.img"] path];
     NSString *record = [[dir URLByAppendingPathComponent:@"session.json"] path];
     [self appendLog:@"\n--- Start diagnostic ---\n"];
+    [self appendLog:@"Data disk: Library/Guest/android-data.img\n"];
     [self appendLog:[NSString stringWithFormat:@"iOS %@, RAM %llu MiB\n",UIDevice.currentDevice.systemVersion,(unsigned long long)(NSProcessInfo.processInfo.physicalMemory >> 20)]];
     NSString *frameworks = NSBundle.mainBundle.privateFrameworksPath;
     NSError *listError = nil;
