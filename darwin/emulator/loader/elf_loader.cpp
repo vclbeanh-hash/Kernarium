@@ -134,6 +134,23 @@ private:
 	if (::uml::runtime::signed_kernel_text_kept(
 		    reinterpret_cast<const void *>(destination), length))
 		return 0;
+	// Record the actual carrier protections before asking Darwin for an
+	// alias. A successful remap alone does not guarantee executable pages.
+	vm_address_t source_region = reinterpret_cast<vm_address_t>(source);
+	vm_size_t source_size = 0;
+	vm_region_basic_info_data_64_t source_info{};
+	mach_msg_type_number_t source_count = VM_REGION_BASIC_INFO_COUNT_64;
+	mach_port_t object = MACH_PORT_NULL;
+	const auto source_result = vm_region_64(mach_task_self(),
+		&source_region, &source_size, VM_REGION_BASIC_INFO_64,
+		reinterpret_cast<vm_region_info_t>(&source_info), &source_count,
+		&object);
+	if (object != MACH_PORT_NULL)
+		(void)mach_port_deallocate(mach_task_self(), object);
+	fprintf(stderr, "UML ELF carrier: region=%#lx size=%lu cur=%#x max=%#x status=%d\n",
+		static_cast<unsigned long>(source_region),
+		static_cast<unsigned long>(source_size),
+		source_info.protection, source_info.max_protection, source_result);
 	vm_address_t target = destination;
 	vm_prot_t current_protection = VM_PROT_NONE;
 	vm_prot_t maximum_protection = VM_PROT_NONE;
@@ -154,15 +171,26 @@ private:
 		(void)::uml::runtime::record_kernel_text_alias(
 			reinterpret_cast<const void *>(destination), length, source);
 	}
+	fprintf(stderr, "UML ELF alias: target=%#lx cur=%#x max=%#x status=%d\n",
+		static_cast<unsigned long>(target),
+		current_protection, maximum_protection, result);
+	constexpr vm_prot_t rx = VM_PROT_READ | VM_PROT_EXECUTE;
 	if (result != KERN_SUCCESS || target != destination ||
-	    (current_protection & (VM_PROT_READ | VM_PROT_EXECUTE)) !=
-		(VM_PROT_READ | VM_PROT_EXECUTE) ||
-	    (maximum_protection & VM_PROT_EXECUTE) == 0) {
-		fprintf(stderr,
-			"UML ELF: cannot alias signed kernel text at %#lx: %s\n",
-			static_cast<unsigned long>(destination),
-			mach_error_string(result));
+	    (maximum_protection & rx) != rx) {
+		fprintf(stderr, "UML ELF: signed alias lacks permitted RX protections at %#lx: %s\n",
+			static_cast<unsigned long>(destination), mach_error_string(result));
 		return -1;
+	}
+	// Some hosts return a reduced current protection, even though RX is
+	// within the permitted maximum. Ask the OS for RX only, never RWX or
+	// a higher maximum, and stop if the OS refuses it.
+	if (current_protection != rx) {
+		if (mprotect(reinterpret_cast<void *>(destination), length,
+			PROT_READ | PROT_EXEC) != 0) {
+			perror("UML ELF: signed alias RX protection");
+			return -1;
+		}
+		fprintf(stderr, "UML ELF: signed alias restored to permitted RX\n");
 	}
 	return 0;
 }
